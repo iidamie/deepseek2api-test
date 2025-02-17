@@ -35,16 +35,6 @@ jobs:
           git config --global user.name "iidamie"
           git config --global user.email "iidamie@users.noreply.github.com"
 
-      - name: Create package.json if not exists
-        run: |
-          if [ ! -f package.json ]; then
-            echo '{
-              "name": "deepseek2api",
-              "version": "1.2.2",
-              "private": true
-            }' > package.json
-          fi
-
       - name: Install semantic-release
         run: |
           npm install -g \
@@ -62,7 +52,7 @@ jobs:
   build-and-push:
     needs: semantic-release
     runs-on: ubuntu-latest
-    if: needs.semantic-release.outputs.new_release_published == 'true' || github.ref == 'refs/heads/dev'
+    if: needs.semantic-release.outputs.new_release_published == 'true'
     steps:
       - uses: actions/checkout@v2
 
