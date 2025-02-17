@@ -1,46 +1,98 @@
 name: Build and Push Docker Image
 
 on:
-  release:
-    types: [created]
   workflow_dispatch:
-    inputs:
-      tag:
-        description: 'Tag Name'
-        required: true
+  push:
+    branches:
+      - dev
+      - main
+    paths-ignore:
+      - 'README.MD'
+      - 'docker-compose.yml'
+      - '.github/**'
+      - 'vercel.json'
+      - '.gitignore'
 
 jobs:
-  build-and-push:
+  semantic-release:
     runs-on: ubuntu-latest
+    outputs:
+      new_version: ${{ steps.semantic.outputs.new_release_version }}
+      new_release_published: ${{ steps.semantic.outputs.new_release_published }}
     steps:
-    - uses: actions/checkout@v2
+      - uses: actions/checkout@v2
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GH_TOKEN }}
 
-    - name: Set up Docker Buildx
-      uses: docker/setup-buildx-action@v1
+      - name: Setup Node.js for semantic-release
+        uses: actions/setup-node@v2
+        with:
+          node-version: '18'
 
-    - name: Login to Docker Hub
-      uses: docker/login-action@v1
-      with:
-        username: ${{ secrets.DOCKER_USERNAME }}
-        password: ${{ secrets.DOCKER_PASSWORD }}
+      - name: Git Configuration
+        run: |
+          git config --global user.name "iidamie"
+          git config --global user.email "iidamie@users.noreply.github.com"
 
-    - name: Set tag name
-      id: tag_name
-      run: |
-        if [ "${{ github.event_name }}" = "release" ]; then
-          echo "::set-output name=tag::${GITHUB_REF#refs/tags/}"
-        elif [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-          echo "::set-output name=tag::${{ github.event.inputs.tag }}"
-        fi
+      - name: Create package.json if not exists
+        run: |
+          if [ ! -f package.json ]; then
+            echo '{
+              "name": "deepseek2api",
+              "version": "1.2.2",
+              "private": true
+            }' > package.json
+          fi
 
-    - name: Build and push Docker image with Release tag
-      uses: docker/build-push-action@v2
-      with:
-        context: .
-        file: ./Dockerfile
-        push: true
-        tags: |
-          iidamie/deepseek2api:${{ steps.tag_name.outputs.tag }}
-          iidamie/deepseek2api:latest
-        platforms: linux/amd64,linux/arm64
-        build-args: TARGETPLATFORM=${{ matrix.platform }}
+      - name: Install semantic-release
+        run: |
+          npm install -g \
+            semantic-release \
+            @semantic-release/git \
+            @semantic-release/changelog \
+            @semantic-release/exec
+
+      - name: Semantic Release
+        id: semantic
+        env:
+          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
+        run: semantic-release
+
+  build-and-push:
+    needs: semantic-release
+    runs-on: ubuntu-latest
+    if: needs.semantic-release.outputs.new_release_published == 'true' || github.ref == 'refs/heads/dev'
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v1
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v1
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Set Docker tag
+        id: set_tag
+        run: |
+          if [ "${{ github.ref }}" = "refs/heads/main" ]; then
+            # Main branch: v1.2.3 and latest
+            VERSION="${{ needs.semantic-release.outputs.new_version }}"
+            echo "DOCKER_TAGS=iidamie/deepseek2api:${VERSION},iidamie/deepseek2api:latest" >> $GITHUB_ENV
+          else
+            VERSION="${{ needs.semantic-release.outputs.new_version }}"
+            echo "DOCKER_TAGS=iidamie/deepseek2api:${VERSION},iidamie/deepseek2api:dev" >> $GITHUB_ENV
+          fi
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v2
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          tags: ${{ env.DOCKER_TAGS }}
+          platforms: linux/amd64,linux/arm64
+          build-args: TARGETPLATFORM=${{ matrix.platform }}
