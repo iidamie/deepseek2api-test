@@ -32,7 +32,7 @@
       "prepareCmd": "echo ${nextRelease.version} > version.txt"
     }],
     ["@semantic-release/github", {
-      "successComment": ":tada: This release is now available as \`${nextRelease.version}\`"
+      "successComment": ":tada: This release is now available as ${nextRelease.version}"
     }]
   ]
 }
