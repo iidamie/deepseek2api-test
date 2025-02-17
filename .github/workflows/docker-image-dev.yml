@@ -2,14 +2,6 @@ name: Dev Build & Release
 
 on:
   workflow_dispatch:
-  push:
-    branches: [dev]
-    paths-ignore:
-      - 'README.MD'
-      - 'docker-compose.yml'
-      - '.github/**'
-      - 'vercel.json'
-      - '.gitignore'
 
 jobs:
   semantic-release:
